@@ -6,10 +6,37 @@ const userModel = require("../models/user.model");
 
 const route = express.Router();
 
+const authMiddleware = (req, res, next) => {
+  const token = req.cookies.token;
+  if (!token) return res.status(401).json({ message: "Unauthorized" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+};
+
+
 route.get("/", (req, res) => {
   res.status(200).json({ message: "200 Ok" });
   console.log("OK '/'");
 });
+
+route.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await userModel.findById(req.user.id).select("-password -__v");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.status(200).json(user);
+  } catch (err) {
+    console.error("GET user error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 
 route.post(
   "/onboarding",
@@ -37,7 +64,7 @@ route.post(
     try {
       const hashedPassword = await bcrypt.hash(password, 10);
       console.log("Creating User in Database");
-
+      console.log(req.body);
       const user = await userModel.create({
         emailId,
         password: hashedPassword,
@@ -84,17 +111,17 @@ route.post(
       });
     }
 
-    const { emailId, password } = req.body;
+    const { emailId } = req.body;
 
     try {
       console.log("Looking for user in database");
       const user = await userModel.findOne({ emailId: emailId });
-
+      console.log(user);
       if (!user) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      const isMatch = await bcrypt.compare(password, user.password);
+      const isMatch = await bcrypt.compare(req.body.password, user.password);
       if (!isMatch) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
@@ -106,15 +133,19 @@ route.post(
       );
 
       console.log("Successfully Logged In");
-      
-      res
-        .cookie("token", token, {
+
+      const { password, __v, ...safeUser } = user.toObject();
+      console.log(safeUser);
+
+      res.cookie("token", token, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
           sameSite: "Lax",
+          maxAge: 60 * 60 * 1000
         })
         .status(200)
-        .json({ message: "Login Success" });
+        .json({ message: "Login Success", data: safeUser });
+
 
     } catch (error) {
       console.error("Login Error:", error);
@@ -122,5 +153,16 @@ route.post(
     }
   }
 );
+
+route.post("/logout", (req, res) => {
+  res
+    .clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Lax"
+    })
+    .status(200)
+    .json({ message: "Logged out successfully" });
+});
 
 module.exports = route;
