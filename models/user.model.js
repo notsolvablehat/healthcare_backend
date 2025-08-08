@@ -81,9 +81,23 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     trim: true,
+    enum: ["patient", "doctor"],
   },
   avatar: {
     type: String,
+  },
+  certificatePath: { 
+    type: String, 
+    default: "N/A" 
+  },
+  termsAccepted: { 
+    type: Boolean, 
+    default: false 
+  },
+  specialization: {
+    type: String,
+    trim: true,
+    enum: ["Cardiology", "Dermatology", "Neurology", "Orthopedics", "Pediatrics", "Oncology", "Radiology", "General Surgery", "Other"]
   },
   emailId: {
     type: String,
@@ -101,7 +115,7 @@ const userSchema = new mongoose.Schema({
   },
   gender: {
     type: String,
-    enum: ["Female", "Male", "Non-binary", "Other"],
+    enum: ["Female", "Male", "Non-binary", "Other", ""],
   },
   bloodType: {
     type: String,

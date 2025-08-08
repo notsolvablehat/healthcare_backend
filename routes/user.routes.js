@@ -38,27 +38,28 @@ route.get("/me", authMiddleware, async (req, res) => {
 });
 
 
-route.post(
-  "/onboarding",
+route.post( "/onboarding",
   [
     body("emailId", "Email must be at least 6 characters").trim().isLength({ min: 6 }),
     body("password", "Password must be at least 8 characters").trim().isLength({ min: 8 }),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ message: "Invalid Data", data: errors.array() });
-    }
+    body("role").isIn(["doctor", "patient"]),
+    ],
+    async (req, res) => {
+      console.log("Incoming role type:", typeof req.body.role, "value:", req.body);
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: "Invalid Data", data: errors.array() });
+      }
 
     const {
       emailId,
       password,
       firstName,
       lastName,
-      userType,
       certificatePath,
       specialization,
       termsAccepted,
+      role,
     } = req.body;
 
     try {
@@ -70,19 +71,19 @@ route.post(
         password: hashedPassword,
         firstName,
         lastName,
-        userType,
         certificatePath,
         termsAccepted,
         specialization,
+        role,
       });
 
-      console.log("Successfully created user");
+      console.log("Successfully created user", user);
       res.status(201).json({
         message: "User created successfully",
       });
     } catch (error) {
       console.error("Onboarding Error:", error);
-      
+
       if (error.code === 11000) {
         return res.status(409).json({
             message: "An account with this email already exists.",
@@ -96,8 +97,7 @@ route.post(
   }
 );
 
-route.post(
-  "/login",
+route.post( "/login",
   [
     body("emailId", "Invalid email format").trim().isEmail(),
     body("password", "Password cannot be empty").notEmpty(),
@@ -154,7 +154,8 @@ route.post(
   }
 );
 
-route.post("/logout", (req, res) => {
+route.post("/logout",
+  (req, res) => {
   res
     .clearCookie("token", {
       httpOnly: true,
@@ -163,6 +164,67 @@ route.post("/logout", (req, res) => {
     })
     .status(200)
     .json({ message: "Logged out successfully" });
+});
+
+route.put("/update-profile", authMiddleware, async (req, res) => {
+  const updatePayload = req.body;
+  console.log('Incoming update payload:', updatePayload);
+
+  // Check if payload is present and is a non-null object
+  if (!updatePayload || typeof updatePayload !== 'object') {
+    return res.status(400).json({ message: "Invalid update data provided" });
+  }
+
+  // Create a new object to hold the fields we want to update,
+  // using dot notation for nested fields
+  const updateFields = {};
+
+  // Extract keys from the payload and build the updateFields object dynamically
+  // The frontend should send a single top-level key that matches the schema (e.g., 'medicalProfile')
+  const rootKey = Object.keys(updatePayload).find(key => 
+    ['personalInformation', 'medicalProfile', 'accountSettings', 'securitySettings'].includes(key)
+  );
+
+  if (rootKey) {
+    const data = updatePayload[rootKey];
+    for (const key in data) {
+      // Use dot notation to update nested sub-documents or arrays
+      updateFields[`${rootKey}.${key}`] = data[key];
+    }
+  } else {
+    for (const key in updatePayload) {
+      if (['firstName', 'lastName', 'dob', 'gender', 'bloodType', 'biography', 'address', 'emergencyContact'].includes(key)) {
+        if (typeof updatePayload[key] === 'object' && updatePayload[key] !== null) {
+          for (const subKey in updatePayload[key]) {
+             updateFields[`${key}.${subKey}`] = updatePayload[key][subKey];
+          }
+        } else {
+           updateFields[key] = updatePayload[key];
+        }
+      }
+    }
+  }
+
+  if (updateFields.password) delete updateFields.password;
+  if (updateFields.emailId) delete updateFields.emailId;
+  if (updateFields.role) delete updateFields.role;
+
+  try {
+    const updatedUser = await userModel.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    ).select("-password -__v");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ message: "Profile updated successfully", data: updatedUser });
+  } catch (error) {
+    console.error("Profile Update Error:", error);
+    res.status(500).json({ message: "An internal server error occurred." });
+  }
 });
 
 module.exports = route;
