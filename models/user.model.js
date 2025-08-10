@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+// ---------------Medical Profile -------------
 // Sub-schema for allergies within the medical profile
 const allergySchema = new mongoose.Schema({
   name: { type: String, default: "NA" },
@@ -27,15 +28,16 @@ const familyHistorySchema = new mongoose.Schema({
   condition: { type: String, default: "NA" },
   relation: { type: String, default: "NA" },
 });
-
+// ---------------Medical Profile -------------
+// -------------------- Account Settings-------------
 // Sub-schema for notification settings
 const notificationSettingsSchema = new mongoose.Schema({
-  email: { type: Boolean, default: true },
-  sms: { type: Boolean, default: true },
-  app: { type: Boolean, default: true },
-  appointmentReminders: { type: Boolean, default: true },
+  email: { type: Boolean, default: false },
+  sms: { type: Boolean, default: false },
+  app: { type: Boolean, default: false },
+  appointmentReminders: { type: Boolean, default: false },
   medicationReminders: { type: Boolean, default: false },
-  systemUpdates: { type: Boolean, default: true },
+  systemUpdates: { type: Boolean, default: false },
 });
 
 // Sub-schema for privacy settings
@@ -51,13 +53,17 @@ const accessibilitySettingsSchema = new mongoose.Schema({
   largeText: { type: Boolean, default: false },
   screenReader: { type: Boolean, default: false },
 });
+// -------------------- Account Settings ------------
 
+// ---------Security Settings---------------
 // Sub-schema for connected devices
 const connectedDeviceSchema = new mongoose.Schema({
   name: { type: String },
   lastActive: { type: Date },
   location: { type: String },
+  deviceType: String,
 });
+// ---------Security Settings---------------
 
 // Sub-schema for login history
 const loginHistorySchema = new mongoose.Schema({
@@ -86,18 +92,18 @@ const userSchema = new mongoose.Schema({
   avatar: {
     type: String,
   },
-  certificatePath: { 
-    type: String, 
-    default: "N/A" 
+  certificatePath: {
+    type: String,
+    default: "N/A"
   },
-  termsAccepted: { 
-    type: Boolean, 
-    default: false 
+  termsAccepted: {
+    type: Boolean,
+    default: false
   },
   specialization: {
     type: String,
     trim: true,
-    enum: ["Cardiology", "Dermatology", "Neurology", "Orthopedics", "Pediatrics", "Oncology", "Radiology", "General Surgery", "Other"]
+    enum: ["Cardiology", "Dermatology", "Neurology", "Orthopedics", "Pediatrics", "Oncology", "Radiology", "General Surgery", "Other", ""]
   },
   emailId: {
     type: String,
@@ -115,7 +121,7 @@ const userSchema = new mongoose.Schema({
   },
   gender: {
     type: String,
-    enum: ["Female", "Male", "Non-binary", "Other", ""],
+    enum: ["female", "male", "Non-binary", "other", ""],
   },
   bloodType: {
     type: String,

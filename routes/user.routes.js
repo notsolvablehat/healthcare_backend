@@ -19,7 +19,6 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-
 route.get("/", (req, res) => {
   res.status(200).json({ message: "200 Ok" });
   console.log("OK '/'");
@@ -36,7 +35,6 @@ route.get("/me", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
 
 route.post( "/onboarding",
   [
@@ -75,6 +73,16 @@ route.post( "/onboarding",
         termsAccepted,
         specialization,
         role,
+        accountSettings: {
+          notifications: {},
+          privacy: {},
+          accessibility: {},
+        },
+        address: {
+        },
+        emergencyContact: {},
+        medicalProfile: {},
+        securitySettings: {},
       });
 
       console.log("Successfully created user", user);
@@ -138,6 +146,7 @@ route.post( "/login",
       console.log(safeUser);
 
       res.cookie("token", token, {
+          path: "/",
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
           sameSite: "Lax",
@@ -158,73 +167,92 @@ route.post("/logout",
   (req, res) => {
   res
     .clearCookie("token", {
+      path: "/",
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "Lax"
     })
     .status(200)
     .json({ message: "Logged out successfully" });
+    console.log("Logged out");
 });
 
 route.put("/update-profile", authMiddleware, async (req, res) => {
-  const updatePayload = req.body;
-  console.log('Incoming update payload:', updatePayload);
+    const userId = req.user.id;
+    const updatePayload = req.body;
+    console.log('Incoming update payload:', JSON.stringify(updatePayload));
 
-  // Check if payload is present and is a non-null object
-  if (!updatePayload || typeof updatePayload !== 'object') {
-    return res.status(400).json({ message: "Invalid update data provided" });
-  }
-
-  // Create a new object to hold the fields we want to update,
-  // using dot notation for nested fields
-  const updateFields = {};
-
-  // Extract keys from the payload and build the updateFields object dynamically
-  // The frontend should send a single top-level key that matches the schema (e.g., 'medicalProfile')
-  const rootKey = Object.keys(updatePayload).find(key => 
-    ['personalInformation', 'medicalProfile', 'accountSettings', 'securitySettings'].includes(key)
-  );
-
-  if (rootKey) {
-    const data = updatePayload[rootKey];
-    for (const key in data) {
-      // Use dot notation to update nested sub-documents or arrays
-      updateFields[`${rootKey}.${key}`] = data[key];
+    if (!updatePayload || typeof updatePayload !== 'object' || Object.keys(updatePayload).length === 0) {
+        return res.status(400).json({ message: "Invalid or empty update data provided" });
     }
-  } else {
-    for (const key in updatePayload) {
-      if (['firstName', 'lastName', 'dob', 'gender', 'bloodType', 'biography', 'address', 'emergencyContact'].includes(key)) {
-        if (typeof updatePayload[key] === 'object' && updatePayload[key] !== null) {
-          for (const subKey in updatePayload[key]) {
-             updateFields[`${key}.${subKey}`] = updatePayload[key][subKey];
-          }
-        } else {
-           updateFields[key] = updatePayload[key];
+
+    try {
+        const updateFields = {};
+
+        if (updatePayload.personalInfo) {
+            const { primaryPhone, ...personalData } = updatePayload.personalInfo;
+            for (const key in personalData) {
+                if (Object.prototype.hasOwnProperty.call(personalData, key)) {
+                    updateFields[key] = personalData[key];
+                }
+            }
+            if (primaryPhone) {
+                updateFields.phone = primaryPhone;
+            }
         }
-      }
+
+        if (updatePayload.medicalProfile) {
+            for (const key in updatePayload.medicalProfile) {
+                if (Object.prototype.hasOwnProperty.call(updatePayload.medicalProfile, key)) {
+                    const value = updatePayload.medicalProfile[key];
+                     if (Array.isArray(value)) {
+                        updateFields[`medicalProfile.${key}`] = value.filter(item => item && (typeof item !== 'object' || Object.keys(item).length > 0));
+                    } else {
+                        updateFields[`medicalProfile.${key}`] = value;
+                    }
+                }
+            }
+        }
+
+        if (updatePayload.accountSettings) {
+            const settings = updatePayload.accountSettings;
+            for (const key in settings) {
+                if (key === 'notifications' || key === 'privacy' || key === 'accessibility') {
+                    for (const nestedKey in settings[key]) {
+                        if (nestedKey !== '_id' && Object.prototype.hasOwnProperty.call(settings[key], nestedKey)) {
+                            updateFields[`accountSettings.${key}.${nestedKey}`] = settings[key][nestedKey];
+                        }
+                    }
+                } else if(Object.prototype.hasOwnProperty.call(settings, key)) {
+                    updateFields[`accountSettings.${key}`] = settings[key];
+                }
+            }
+        }
+
+        if (Object.keys(updateFields).length === 0) {
+            return res.status(400).json({ message: "No valid fields to update." });
+        }
+
+        const updatedUser = await userModel.findByIdAndUpdate(
+            userId,
+            { $set: updateFields },
+            { new: true, runValidators: true, context: 'query' }
+        ).select("-password -__v");
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({ message: "Profile updated successfully", data: updatedUser });
+
+    } catch (error) {
+        console.error("Update Profile Error:", error);
+        // Handle validation errors from Mongoose
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({ message: "Validation error", details: error.errors });
+        }
+        res.status(500).json({ message: "An internal server error occurred during the update." });
     }
-  }
-
-  if (updateFields.password) delete updateFields.password;
-  if (updateFields.emailId) delete updateFields.emailId;
-  if (updateFields.role) delete updateFields.role;
-
-  try {
-    const updatedUser = await userModel.findByIdAndUpdate(
-      req.user.id,
-      { $set: updateFields },
-      { new: true, runValidators: true }
-    ).select("-password -__v");
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    res.status(200).json({ message: "Profile updated successfully", data: updatedUser });
-  } catch (error) {
-    console.error("Profile Update Error:", error);
-    res.status(500).json({ message: "An internal server error occurred." });
-  }
 });
 
 module.exports = route;
