@@ -6,7 +6,7 @@ const userRoutes = require("./routes/user.routes");
 const cookieParser = require("cookie-parser");
 const dbConnect = require("./config/db.config");
 const LLMRoute = require("./routes/gemini.routes");
-
+const PORT = process.env.PORT || 3000;
 const app = express();
 dbConnect();
 
@@ -20,4 +20,4 @@ app.use(cookieParser())
 app.use("/user", userRoutes);
 app.use("/llm", LLMRoute);
 
-app.listen(3000, () => console.log("Server active on http://localhost:3000"))
+app.listen(PORT, () => console.log("Server active on http://localhost:3000"))
